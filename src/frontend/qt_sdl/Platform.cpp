@@ -16,6 +16,8 @@
     with melonDS. If not, see http://www.gnu.org/licenses/.
 */
 
+#include <arpa/inet.h>
+#include <cstdlib>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -399,6 +401,13 @@ bool MP_Init()
     }
 #endif // __WIN32__
 
+    const char *peer_ip = getenv("MELONDS_PEER_IP");
+    if (peer_ip) {
+      printf("LAN: %s\n", peer_ip);
+    } else {
+      printf("LAN: 255.255.255.255\n");
+    }
+
     MPSocket = socket(AF_INET, SOCK_DGRAM, 0);
     if (MPSocket < 0)
     {
@@ -425,7 +434,7 @@ bool MP_Init()
 
     sockaddr_t saddr;
     saddr.sa_family = AF_INET;
-    *(u32*)&saddr.sa_data[2] = htonl(Config::SocketBindAnyAddr ? INADDR_ANY : INADDR_LOOPBACK);
+    *(u32*)&saddr.sa_data[2] = htonl((peer_ip || Config::SocketBindAnyAddr) ? INADDR_ANY : INADDR_LOOPBACK);
     *(u16*)&saddr.sa_data[0] = htons(7064);
     res = bind(MPSocket, &saddr, sizeof(sockaddr_t));
     if (res < 0)
@@ -435,16 +444,18 @@ bool MP_Init()
         return false;
     }
 
-    res = setsockopt(MPSocket, SOL_SOCKET, SO_BROADCAST, (const char*)&opt_true, sizeof(int));
-    if (res < 0)
-    {
-        closesocket(MPSocket);
-        MPSocket = INVALID_SOCKET;
-        return false;
+    if (!peer_ip) {
+      res = setsockopt(MPSocket, SOL_SOCKET, SO_BROADCAST, (const char*)&opt_true, sizeof(int));
+      if (res < 0)
+      {
+          closesocket(MPSocket);
+          MPSocket = INVALID_SOCKET;
+          return false;
+      }
     }
 
     MPSendAddr.sa_family = AF_INET;
-    *(u32*)&MPSendAddr.sa_data[2] = htonl(INADDR_BROADCAST);
+    *(u32*)&MPSendAddr.sa_data[2] = peer_ip ? inet_addr(peer_ip) : htonl(INADDR_BROADCAST);
     *(u16*)&MPSendAddr.sa_data[0] = htons(7064);
 
     return true;
